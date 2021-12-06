@@ -1,19 +1,26 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-
-const {User, validate} = require('../models/user');
+const { PrismaClient } = require('@prisma/client')
+const prisma = new PrismaClient()
+const bcrypt = require('bcrypt')
+const { generateAuthToken, validateFields } = require('../helpers/auth')
 
 exports.userSignup = async (req, res, next) => {
   try {
-    const user = await User.findOne({ email: req.body.email })
+    const user = await prisma.user.findFirst({
+      where: {
+        email: req.body.email
+      },
+    })
     if (user) return res.status(409).json({
       message: 'Email already registered'
     })
 
-    const newUser = new User(req.body)
-    newUser.password = await bcrypt.hash(newUser.password, 10)
-    await newUser.save()
+    const password = await bcrypt.hash(req.body.password, 10)
+    await prisma.user.create({
+      data: {
+        email: req.body.email,
+        password: password
+      }
+    })
 
     res.status(201).json({
       message: 'User created'
@@ -27,12 +34,16 @@ exports.userSignup = async (req, res, next) => {
 
 exports.userLogin = async (req, res, next) => {
   try {
-    const error = validate(req.body).error
+    const error = validateFields(req.body).error
     if (error) return res.status(400).json({
       error: 'Invalid email or password'
     })
 
-    const user = await User.findOne({ email: req.body.email })
+    const user = await prisma.user.findFirst({
+      where: {
+        email: req.body.email
+      },
+    })
     if (!user) return res.status(401).json({
       message: 'Email not registered'
     })
@@ -45,7 +56,7 @@ exports.userLogin = async (req, res, next) => {
       message: 'Invalid email or password'
     })
 
-    const token = user.generateAuthToken();
+    const token = generateAuthToken(user);
     res.json({
       message: 'Logged in successfully',
       token: token
@@ -59,7 +70,11 @@ exports.userLogin = async (req, res, next) => {
 
 exports.userDelete = async (req, res, next) => {
   try {
-    await User.remove({ _id: req.params.userId })
+    await prisma.user.delete({
+      where: {
+        id: req.params.userId
+      }
+    })
     res.status(200).json({
       message: 'User deleted'
     });
